@@ -1,0 +1,31 @@
+[Unit]
+Description=T2 Mac suspend workaround (Apple BCE and Touch Bar)
+Documentation=https://wiki.t2linux.org/guides/postinstall/#suspend-workaround
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Sonoma-era T2 firmware cannot suspend reliably while apple-bce is loaded.
+# This model also requires the Touch Bar stack to be reconstructed in order.
+ExecStart=/usr/bin/systemctl stop tiny-dfr.service
+ExecStart=/usr/bin/rmmod -f apple-bce
+ExecStart=-/usr/bin/modprobe -r appletbdrm
+ExecStart=-/usr/bin/modprobe -r hid_appletb_kbd
+ExecStart=-/usr/bin/modprobe -r hid_appletb_bl
+
+ExecStop=/usr/bin/sleep 4
+ExecStop=/usr/bin/modprobe apple-bce
+ExecStop=/usr/bin/sleep 4
+ExecStop=/usr/bin/modprobe hid_appletb_bl
+ExecStop=/usr/bin/sleep 2
+ExecStop=/usr/bin/modprobe hid_appletb_kbd
+ExecStop=/usr/bin/sleep 2
+ExecStop=/usr/bin/modprobe appletbdrm
+ExecStop=/usr/bin/sleep 3
+ExecStop=/usr/bin/systemctl start tiny-dfr.service
+
+[Install]
+WantedBy=sleep.target
