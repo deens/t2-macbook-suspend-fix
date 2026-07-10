@@ -1,0 +1,14 @@
+[Unit]
+Description=Power off the AMD dGPU on a hybrid-graphics T2 Mac
+Documentation=https://wiki.t2linux.org/guides/hybrid-graphics/
+After=systemd-modules-load.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# vga_switcheroo is created asynchronously during GPU driver initialization.
+ExecStart=/bin/sh -c 'for i in $(seq 1 30); do [ -e /sys/kernel/debug/vgaswitcheroo/switch ] && exec sh -c "echo OFF > /sys/kernel/debug/vgaswitcheroo/switch"; sleep 1; done; exit 1'
+
+[Install]
+WantedBy=multi-user.target
