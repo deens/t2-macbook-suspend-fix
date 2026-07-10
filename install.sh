@@ -12,7 +12,17 @@ need() { command -v "$1" >/dev/null || die "Required command not found: $1"; }
 [[ $MODEL == MacBookPro16,1 || $FORCE == --force ]] || \
   die "Detected '$MODEL', not MacBookPro16,1. Refusing to continue."
 
-for command in install pacman systemctl modprobe rmmod limine-mkinitcpio; do need "$command"; done
+for command in getent install pacman systemctl modprobe rmmod limine-mkinitcpio; do need "$command"; done
+
+TARGET_USER=${SUDO_USER:-}
+if [[ -z $TARGET_USER && -n ${PKEXEC_UID:-} ]]; then
+  TARGET_USER=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
+fi
+[[ -n $TARGET_USER && $TARGET_USER != root ]] || \
+  die "Run with sudo or graphical authorization from the desktop user."
+TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+[[ -d $TARGET_HOME ]] || die "Home directory not found for '$TARGET_USER'."
+HYPR_AUTOSTART=$TARGET_HOME/.config/hypr/autostart.conf
 
 # Omarchy normally installs these during T2 hardware detection. Keep the
 # finishing kit self-contained for reinstalls and repair any missing package
@@ -54,12 +64,24 @@ backup /etc/t2fand.conf
 backup /etc/modprobe.d/apple-gmux.conf
 backup /etc/udev/rules.d/30-amdgpu-pm.rules
 backup /etc/systemd/system/amdgpu-off.service
+backup "$HYPR_AUTOSTART"
 
 install -D -m 0644 "$ROOT_DIR/files/suspend-fix-t2.service" \
   /etc/systemd/system/suspend-fix-t2.service
 install -D -m 0644 "$ROOT_DIR/files/10-macbook-deep.conf" \
   /etc/systemd/sleep.conf.d/10-macbook-s2idle.conf
 install -D -m 0644 "$ROOT_DIR/files/t2fand.conf" /etc/t2fand.conf
+
+# Omarchy selects performance mode whenever AC is connected. On this i9 model
+# that keeps idle clocks and temperatures unnecessarily high. The user override
+# is sourced after Omarchy's default autostart, so balanced wins at login while
+# full turbo remains available under load.
+mkdir -p "$(dirname "$HYPR_AUTOSTART")"
+if [[ ! -e $HYPR_AUTOSTART ]]; then
+  install -o "$TARGET_USER" -g "$(id -gn "$TARGET_USER")" -m 0644 /dev/null "$HYPR_AUTOSTART"
+fi
+sed -i '/^# t2-macbook-balanced-power$/,/^# end-t2-macbook-balanced-power$/d' "$HYPR_AUTOSTART"
+printf '\n# t2-macbook-balanced-power\nexec-once = powerprofilesctl set balanced\n# end-t2-macbook-balanced-power\n' >>"$HYPR_AUTOSTART"
 
 # Releases containing the experimental hybrid-graphics setup could page-fault
 # in apple_gmux during boot and leave the internal panel black. Remove those
@@ -88,6 +110,8 @@ systemctl enable t2fanrd.service
 systemctl enable tiny-dfr.service
 systemctl enable thermald.service
 systemctl enable power-profiles-daemon.service
+systemctl enable fstrim.timer
+powerprofilesctl set balanced
 systemctl restart t2fanrd.service
 limine-mkinitcpio
 

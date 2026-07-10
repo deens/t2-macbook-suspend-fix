@@ -36,6 +36,10 @@ check 'fan daemon is active' systemctl is-active t2fanrd.service
 check 'Touch Bar daemon is active' systemctl is-active tiny-dfr.service
 check 'thermal daemon is active' systemctl is-active thermald.service
 check 'power profiles daemon is active' systemctl is-active power-profiles-daemon.service
+check 'balanced power profile is active' sh -c "test \"\$(powerprofilesctl get)\" = balanced"
+check 'weekly SSD trim is enabled' systemctl is-enabled fstrim.timer
+check 'balanced Fan1 curve is configured' sh -c "awk '/^\\[Fan1\\]/{fan=1;next} /^\\[/{fan=0} fan&&/^low_temp=50$/{low=1} fan&&/^high_temp=80$/{high=1} END{exit !(low&&high)}' /etc/t2fand.conf"
+check 'balanced Fan2 curve is configured' sh -c "awk '/^\\[Fan2\\]/{fan=1;next} /^\\[/{fan=0} fan&&/^low_temp=50$/{low=1} fan&&/^high_temp=80$/{high=1} END{exit !(low&&high)}' /etc/t2fand.conf"
 check 'internal keyboard and trackpad are present' sh -c "find /dev/input/by-id -maxdepth 1 -iname '*Internal_Keyboard*' | grep -q ."
 check 'Touch Bar is present' sh -c "find /dev/input/by-id -maxdepth 1 -iname '*Touch_Bar*' | grep -q ."
 check 'keyboard backlight is present' test -e /sys/class/leds/:white:kbd_backlight
