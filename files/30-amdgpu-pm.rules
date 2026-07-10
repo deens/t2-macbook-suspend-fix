@@ -1,2 +1,0 @@
-# Keep the Radeon cool if it is enabled for an external display or DRI_PRIME=1.
-SUBSYSTEM=="drm", DRIVERS=="amdgpu", ATTR{device/power_dpm_force_performance_level}="low"

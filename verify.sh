@@ -25,18 +25,9 @@ check 'deep sleep is selected by systemd' grep -q '^MemorySleepMode=deep' /etc/s
 check 'Fan1 is configured' grep -q '^\[Fan1\]' /etc/t2fand.conf
 check 'Fan2 is configured' grep -q '^\[Fan2\]' /etc/t2fand.conf
 check 'fan daemon is active' systemctl is-active t2fanrd.service
-check 'Intel GPU is selected by apple-gmux' grep -qx Y /sys/module/apple_gmux/parameters/force_igd
-check 'Radeon-off service is enabled' systemctl is-enabled amdgpu-off.service
-check 'Radeon-off unit passes static validation' systemd-analyze verify /etc/systemd/system/amdgpu-off.service
-check 'Radeon fallback power rule is installed' grep -q 'power_dpm_force_performance_level.*low' /etc/udev/rules.d/30-amdgpu-pm.rules
-check 'internal display is connected to Intel GPU' sh -c '
-  for status in /sys/class/drm/card*-*/status; do
-    [ "$(cat "$status" 2>/dev/null)" = connected ] || continue
-    card=${status%/*}; card=${card##*/}; card=${card%%-*}
-    [ "$(cat "/sys/class/drm/$card/device/vendor" 2>/dev/null)" = 0x8086 ] && exit 0
-  done
-  exit 1
-'
+check 'unsafe apple-gmux override is absent' test ! -e /etc/modprobe.d/apple-gmux.conf
+check 'unsafe Radeon-off service is absent' test ! -e /etc/systemd/system/amdgpu-off.service
+check 'stale Radeon power rule is absent' test ! -e /etc/udev/rules.d/30-amdgpu-pm.rules
 
 if [[ -r /sys/class/power_supply/BAT0/power_now ]]; then
   awk '{printf "Battery power: %.1f W\n", $1 / 1000000}' /sys/class/power_supply/BAT0/power_now

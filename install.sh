@@ -14,15 +14,6 @@ need() { command -v "$1" >/dev/null || die "Required command not found: $1"; }
 
 for command in install systemctl modprobe rmmod limine-mkinitcpio; do need "$command"; done
 modinfo apple-bce >/dev/null 2>&1 || die "apple-bce is unavailable; install a T2-enabled kernel first."
-modinfo apple_gmux >/dev/null 2>&1 || die "apple_gmux is unavailable; install a current T2-enabled kernel first."
-
-KERNEL_RELEASE=$(uname -r)
-KERNEL_MAJOR=${KERNEL_RELEASE%%.*}
-KERNEL_MINOR=${KERNEL_RELEASE#*.}
-KERNEL_MINOR=${KERNEL_MINOR%%.*}
-if ((KERNEL_MAJOR < 6 || (KERNEL_MAJOR == 6 && KERNEL_MINOR < 10))); then
-  die "Hybrid graphics requires a T2 kernel newer than 6.9.8; found $KERNEL_RELEASE."
-fi
 
 if ! zgrep -q '^CONFIG_MODULE_FORCE_UNLOAD=y' /proc/config.gz 2>/dev/null; then
   die "The running kernel does not advertise CONFIG_MODULE_FORCE_UNLOAD=y."
@@ -55,12 +46,14 @@ install -D -m 0644 "$ROOT_DIR/files/suspend-fix-t2.service" \
 install -D -m 0644 "$ROOT_DIR/files/10-macbook-deep.conf" \
   /etc/systemd/sleep.conf.d/10-macbook-s2idle.conf
 install -D -m 0644 "$ROOT_DIR/files/t2fand.conf" /etc/t2fand.conf
-install -D -m 0644 "$ROOT_DIR/files/apple-gmux.conf" \
-  /etc/modprobe.d/apple-gmux.conf
-install -D -m 0644 "$ROOT_DIR/files/30-amdgpu-pm.rules" \
-  /etc/udev/rules.d/30-amdgpu-pm.rules
-install -D -m 0644 "$ROOT_DIR/files/amdgpu-off.service" \
-  /etc/systemd/system/amdgpu-off.service
+
+# Releases containing the experimental hybrid-graphics setup could page-fault
+# in apple_gmux during boot and leave the internal panel black. Remove those
+# files when upgrading while preserving the suspend and fan configuration.
+systemctl disable --now amdgpu-off.service 2>/dev/null || true
+rm -f /etc/systemd/system/amdgpu-off.service
+rm -f /etc/modprobe.d/apple-gmux.conf
+rm -f /etc/udev/rules.d/30-amdgpu-pm.rules
 
 [[ -f /etc/default/limine ]] || die "/etc/default/limine is missing."
 # Migrate the line written by releases before hybrid-graphics support. Omarchy's
@@ -77,10 +70,9 @@ fi
 
 systemctl daemon-reload
 systemctl enable suspend-fix-t2.service
-systemctl enable amdgpu-off.service
 systemctl restart t2fanrd.service
 limine-mkinitcpio
 
 printf '\nInstalled successfully.\nBackup: %s\n' "$BACKUP_DIR"
 printf 'Reboot, run ./verify.sh, then test lid-close suspend.\n'
-printf 'The Radeon remains available after disabling amdgpu-off.service and rebooting.\n'
+printf 'If upgrading from the hybrid-graphics release, reboot is required to restore the display path.\n'
