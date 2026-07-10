@@ -12,7 +12,21 @@ need() { command -v "$1" >/dev/null || die "Required command not found: $1"; }
 [[ $MODEL == MacBookPro16,1 || $FORCE == --force ]] || \
   die "Detected '$MODEL', not MacBookPro16,1. Refusing to continue."
 
-for command in install systemctl modprobe rmmod limine-mkinitcpio; do need "$command"; done
+for command in install pacman systemctl modprobe rmmod limine-mkinitcpio; do need "$command"; done
+
+# Omarchy normally installs these during T2 hardware detection. Keep the
+# finishing kit self-contained for reinstalls and repair any missing package
+# without refreshing package databases or performing a full system upgrade.
+pacman -S --needed --noconfirm \
+  linux-t2 \
+  linux-t2-headers \
+  apple-t2-audio-config \
+  apple-bcm-firmware \
+  t2fanrd \
+  tiny-dfr \
+  thermald \
+  power-profiles-daemon
+
 modinfo apple-bce >/dev/null 2>&1 || die "apple-bce is unavailable; install a T2-enabled kernel first."
 
 if ! zgrep -q '^CONFIG_MODULE_FORCE_UNLOAD=y' /proc/config.gz 2>/dev/null; then
@@ -70,6 +84,10 @@ fi
 
 systemctl daemon-reload
 systemctl enable suspend-fix-t2.service
+systemctl enable t2fanrd.service
+systemctl enable tiny-dfr.service
+systemctl enable thermald.service
+systemctl enable power-profiles-daemon.service
 systemctl restart t2fanrd.service
 limine-mkinitcpio
 
