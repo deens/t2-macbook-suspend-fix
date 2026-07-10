@@ -37,18 +37,35 @@ backup /etc/systemd/sleep.conf.d/10-macbook-s2idle.conf
 backup /etc/limine-entry-tool.d/t2-suspend.conf
 backup /etc/default/limine
 backup /etc/t2fand.conf
+backup /etc/modprobe.d/apple-gmux.conf
+backup /etc/udev/rules.d/30-amdgpu-pm.rules
+backup /etc/systemd/system/amdgpu-off.service
 
 install -D -m 0644 "$ROOT_DIR/files/suspend-fix-t2.service" \
   /etc/systemd/system/suspend-fix-t2.service
 install -D -m 0644 "$ROOT_DIR/files/10-macbook-deep.conf" \
   /etc/systemd/sleep.conf.d/10-macbook-s2idle.conf
-install -D -m 0644 "$ROOT_DIR/files/t2-suspend.conf" \
-  /etc/limine-entry-tool.d/t2-suspend.conf
 install -D -m 0644 "$ROOT_DIR/files/t2fand.conf" /etc/t2fand.conf
 
+# Releases containing the experimental hybrid-graphics setup could page-fault
+# in apple_gmux during boot and leave the internal panel black. Remove those
+# files when upgrading while preserving the suspend and fan configuration.
+systemctl disable --now amdgpu-off.service 2>/dev/null || true
+rm -f /etc/systemd/system/amdgpu-off.service
+rm -f /etc/modprobe.d/apple-gmux.conf
+rm -f /etc/udev/rules.d/30-amdgpu-pm.rules
+
 [[ -f /etc/default/limine ]] || die "/etc/default/limine is missing."
-if ! grep -q 'pm_async=off' /etc/default/limine; then
-  printf '%s\n' 'KERNEL_CMDLINE[default]+=" pm_async=off"' >> /etc/default/limine
+# Migrate the line written by releases before hybrid-graphics support. Omarchy's
+# own T2 line is left untouched. Use our drop-in only when no other config owns
+# the parameter, which keeps the generated kernel command line deduplicated.
+sed -i '/^# Required by the T2 Linux setup guide; keep asynchronous device suspend off\.$/{N;/\nKERNEL_CMDLINE\[default\]+=" pm_async=off"$/d;}' /etc/default/limine
+if grep -Rqs --include='*.conf' --exclude='t2-suspend.conf' -w 'pm_async=off' \
+  /etc/limine-entry-tool.d || grep -qw 'pm_async=off' /etc/default/limine; then
+  rm -f /etc/limine-entry-tool.d/t2-suspend.conf
+else
+  install -D -m 0644 "$ROOT_DIR/files/t2-suspend.conf" \
+    /etc/limine-entry-tool.d/t2-suspend.conf
 fi
 
 systemctl daemon-reload
@@ -56,4 +73,6 @@ systemctl enable suspend-fix-t2.service
 systemctl restart t2fanrd.service
 limine-mkinitcpio
 
-printf '\nInstalled successfully.\nBackup: %s\nReboot, run ./verify.sh, then test lid-close suspend.\n' "$BACKUP_DIR"
+printf '\nInstalled successfully.\nBackup: %s\n' "$BACKUP_DIR"
+printf 'Reboot, run ./verify.sh, then test lid-close suspend.\n'
+printf 'If upgrading from the hybrid-graphics release, reboot is required to restore the display path.\n'

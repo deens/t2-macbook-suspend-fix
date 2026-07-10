@@ -5,9 +5,13 @@ set -Eeuo pipefail
 BACKUP_DIR=${1:-}
 
 systemctl disable suspend-fix-t2.service 2>/dev/null || true
+systemctl disable amdgpu-off.service 2>/dev/null || true
 rm -f /etc/systemd/system/suspend-fix-t2.service
+rm -f /etc/systemd/system/amdgpu-off.service
 rm -f /etc/systemd/sleep.conf.d/10-macbook-s2idle.conf
 rm -f /etc/limine-entry-tool.d/t2-suspend.conf
+rm -f /etc/modprobe.d/apple-gmux.conf
+rm -f /etc/udev/rules.d/30-amdgpu-pm.rules
 
 if [[ -n $BACKUP_DIR ]]; then
   [[ -d $BACKUP_DIR ]] || { echo "Backup not found: $BACKUP_DIR" >&2; exit 1; }
@@ -24,9 +28,13 @@ if [[ -n $BACKUP_DIR ]]; then
   restore /etc/limine-entry-tool.d/t2-suspend.conf
   restore /etc/default/limine
   restore /etc/t2fand.conf
+  restore /etc/modprobe.d/apple-gmux.conf
+  restore /etc/udev/rules.d/30-amdgpu-pm.rules
+  restore /etc/systemd/system/amdgpu-off.service
 else
-  sed -i 's/[[:space:]]pm_async=off//g' /etc/default/limine
-  sed -i '/^KERNEL_CMDLINE\[default\]+=""$/d' /etc/default/limine
+  # Remove only the exact legacy stanza written by this project. Never strip
+  # pm_async=off from Omarchy's distribution-managed T2 kernel parameters.
+  sed -i '/^# Required by the T2 Linux setup guide; keep asynchronous device suspend off\.$/{N;/\nKERNEL_CMDLINE\[default\]+=" pm_async=off"$/d;}' /etc/default/limine
   printf 'No backup directory supplied; the current fan configuration was preserved.\n'
 fi
 
